@@ -54,8 +54,8 @@ string minutesToTime(int minutes) {
     return ss.str();
 }
 
-// Greedy gate assignment algorithm
-vector<Gate> assignGates(vector<Flight>& flights, int cleaningTime = 20) {
+// Greedy gate assignment algorithm with optional gate limit
+vector<Gate> assignGates(vector<Flight>& flights, int cleaningTime = 20, int maxGates = -1) {
     // Sort flights by arrival time
     sort(flights.begin(), flights.end(),
          [](const Flight& a, const Flight& b) {
@@ -86,24 +86,42 @@ vector<Gate> assignGates(vector<Flight>& flights, int cleaningTime = 20) {
             }
         }
 
-        // If no gate available, create new gate
+        // If no gate available, create new gate (if limit not reached)
         if (!assigned) {
-            Gate newGate(gateCounter++);
-            newGate.occupiedTimes.push_back(make_pair(flights[i].arrival, flights[i].departure));
-            newGate.freeTime = flights[i].departure + cleaningTime;
-            gates.push_back(newGate);
-            gateQueue.push(make_pair(newGate.freeTime, gates.size() - 1));
-            flights[i].gate = newGate.gateId;
+            // Check if we can create a new gate
+            if (maxGates == -1 || gateCounter <= maxGates) {
+                Gate newGate(gateCounter++);
+                newGate.occupiedTimes.push_back(make_pair(flights[i].arrival, flights[i].departure));
+                newGate.freeTime = flights[i].departure + cleaningTime;
+                gates.push_back(newGate);
+                gateQueue.push(make_pair(newGate.freeTime, gates.size() - 1));
+                flights[i].gate = newGate.gateId;
+            } else {
+                // Gate limit reached - flight cannot be assigned
+                flights[i].gate = 0; // UNASSIGNED
+            }
         }
     }
 
     return gates;
 }
 
-// Display results
-void displayResults(const vector<Flight>& flights, const vector<Gate>& gates) {
-    // Minimum gates needed
-    cout << "Minimum gates required: " << gates.size() << endl;
+// Display results with detailed unavailable periods
+void displayResults(const vector<Flight>& flights, const vector<Gate>& gates, int cleaningTime = 20) {
+    cout << "\n========== GATE ASSIGNMENT RESULTS ==========\n";
+
+    // Count unassigned flights
+    int unassignedCount = 0;
+    for (size_t i = 0; i < flights.size(); i++) {
+        if (flights[i].gate == 0) unassignedCount++;
+    }
+
+    // Minimum gates needed vs used
+    cout << "Gates used: " << gates.size() << endl;
+    cout << "Flights successfully assigned: " << (flights.size() - unassignedCount) << endl;
+    if (unassignedCount > 0) {
+        cout << "Flights UNASSIGNED: " << unassignedCount << " (need to delay/divert)\n";
+    }
 
     // Flight assignments
     cout << "\n--- Flight Assignments ---\n";
@@ -121,20 +139,50 @@ void displayResults(const vector<Flight>& flights, const vector<Gate>& gates) {
         if (flights[i].gate > 0) {
             cout << setw(10) << ("Gate " + to_string(flights[i].gate));
         } else {
-            cout << setw(10) << "UNASSIGNED";
+            cout << setw(10) << "**UNASSIGNED**";
         }
         cout << endl;
     }
 
-    // Gate unavailable times (cleaning)
-    cout << "\n--- Gate Cleaning/Unavailable Times ---\n";
+    // Gate unavailable periods (CRITICAL: shows occupancy + cleaning)
+    cout << "\n--- Gate Unavailable Times (Occupancy + Cleaning) ---\n";
     for (size_t i = 0; i < gates.size(); i++) {
-        cout << "\nGate " << gates[i].gateId << " cleaning periods:\n";
+        cout << "\nGate " << gates[i].gateId << " unavailable periods:\n";
+
         for (size_t j = 0; j < gates[i].occupiedTimes.size(); j++) {
-            int cleanStart = gates[i].occupiedTimes[j].second;
-            int cleanEnd = gates[i].occupiedTimes[j].second + 20;
-            cout << "  " << minutesToTime(cleanStart) << " - "
-                 << minutesToTime(cleanEnd) << " (after flight departure)\n";
+            int flightStart = gates[i].occupiedTimes[j].first;
+            int flightEnd = gates[i].occupiedTimes[j].second;
+            int cleanEnd = flightEnd + cleaningTime;
+
+            // Find which flight is using this gate at this time
+            string flightNo = "Unknown";
+            for (size_t k = 0; k < flights.size(); k++) {
+                if (flights[k].gate == gates[i].gateId &&
+                    flights[k].arrival == flightStart &&
+                    flights[k].departure == flightEnd) {
+                    flightNo = flights[k].flightNo;
+                    break;
+                }
+            }
+
+            // Show flight occupancy period
+            cout << "  " << minutesToTime(flightStart) << " - "
+                 << minutesToTime(flightEnd) << " (Flight " << flightNo << " - OCCUPIED)\n";
+
+            // Show cleaning period
+            cout << "  " << minutesToTime(flightEnd) << " - "
+                 << minutesToTime(cleanEnd) << " (CLEANING - Unavailable)\n";
+        }
+
+        // Show total unavailable time for this gate
+        if (!gates[i].occupiedTimes.empty()) {
+            int firstStart = gates[i].occupiedTimes[0].first;
+            int lastEnd = gates[i].occupiedTimes[gates[i].occupiedTimes.size()-1].second + cleaningTime;
+            int totalMinutes = 0;
+            for (size_t j = 0; j < gates[i].occupiedTimes.size(); j++) {
+                totalMinutes += gates[i].occupiedTimes[j].second - gates[i].occupiedTimes[j].first + cleaningTime;
+            }
+            cout << "  Total unavailable time: " << totalMinutes << " minutes\n";
         }
     }
 
@@ -143,6 +191,19 @@ void displayResults(const vector<Flight>& flights, const vector<Gate>& gates) {
     for (size_t i = 0; i < gates.size(); i++) {
         cout << "Gate " << gates[i].gateId << ": "
              << gates[i].occupiedTimes.size() << " flights assigned\n";
+    }
+
+    // Recommendations for unassigned flights
+    if (unassignedCount > 0) {
+        cout << "\n--- UNASSIGNED Flights Recommendations ---\n";
+        cout << "The following flights could not be assigned due to gate capacity:\n";
+        for (size_t i = 0; i < flights.size(); i++) {
+            if (flights[i].gate == 0) {
+                cout << "  - " << flights[i].flightNo
+                     << " (Arrival: " << minutesToTime(flights[i].arrival) << ")\n";
+                cout << "    Action: Delay arrival or divert to another terminal\n";
+            }
+        }
     }
 }
 
@@ -217,6 +278,21 @@ vector<vector<Flight>> createDatasets() {
     dataset5.push_back(Flight("EWE515", 1300, 1420));
     datasets.push_back(dataset5);
 
+    // Dataset 6: Limited gates scenario (10 flights, only 3 gates available)
+    // This will show UNASSIGNED flights when capacity is exceeded
+    vector<Flight> dataset6;
+    dataset6.push_back(Flight("EWF601", 800, 900));   // Gate 1
+    dataset6.push_back(Flight("EWF602", 800, 930));   // Gate 2
+    dataset6.push_back(Flight("EWF603", 800, 1000));  // Gate 3
+    dataset6.push_back(Flight("EWF604", 830, 930));   // UNASSIGNED (all gates busy)
+    dataset6.push_back(Flight("EWF605", 850, 950));   // UNASSIGNED (all gates busy)
+    dataset6.push_back(Flight("EWF606", 920, 1020));  // Gate 1 (after cleaning)
+    dataset6.push_back(Flight("EWF607", 950, 1050));  // Gate 2 (after cleaning)
+    dataset6.push_back(Flight("EWF608", 1020, 1120)); // Gate 3 (after cleaning)
+    dataset6.push_back(Flight("EWF609", 1040, 1140)); // Gate 1 (after cleaning)
+    dataset6.push_back(Flight("EWF610", 1070, 1170)); // Gate 2 (after cleaning)
+    datasets.push_back(dataset6);
+
     return datasets;
 }
 
@@ -232,7 +308,7 @@ int main() {
     // Validate main menu choice
     while (!validChoice) {
         cout << "Choose input method:\n";
-        cout << "1. Use predefined dataset (1-5)\n";
+        cout << "1. Use predefined dataset (1-6)\n";
         cout << "2. Enter flights manually\n";
         cout << "Choice: ";
 
@@ -251,6 +327,7 @@ int main() {
     }
 
     vector<Flight> flights;
+    int maxGates = -1; // -1 means unlimited gates
 
     if (choice == 1) {
         int datasetChoice;
@@ -258,26 +335,35 @@ int main() {
 
         // Validate dataset choice
         while (!validChoice) {
-            cout << "\nSelect dataset (1-5):\n";
+            cout << "\nSelect dataset (1-6):\n";
             cout << "1. Provided dataset (20 flights)\n";
             cout << "2. Non-overlapping flights (3 flights, optimal: 1 gate)\n";
             cout << "3. All overlapping (4 flights, optimal: 4 gates)\n";
             cout << "4. Mixed with cleaning reuse (5 flights, optimal: 2 gates)\n";
             cout << "5. Realistic large schedule (15 flights)\n";
+            cout << "6. Limited gates scenario (10 flights, 3 gates max - shows UNASSIGNED)\n";
             cout << "Choice: ";
 
             if (!(cin >> datasetChoice)) {
-                cout << "Error: Invalid input. Please enter a number between 1-5.\n";
+                cout << "Error: Invalid input. Please enter a number between 1-6.\n";
                 cin.clear();
                 cin.ignore(10000, '\n');
                 continue;
             }
 
-            if (datasetChoice >= 1 && datasetChoice <= 5) {
+            if (datasetChoice >= 1 && datasetChoice <= 6) {
                 flights = datasets[datasetChoice - 1];
+
+                // Dataset 6 has limited gates
+                if (datasetChoice == 6) {
+                    maxGates = 3;
+                    cout << "\n*** This dataset simulates LIMITED GATE CAPACITY (3 gates) ***\n";
+                    cout << "*** Some flights will be UNASSIGNED ***\n";
+                }
+
                 validChoice = true;
             } else {
-                cout << "Error: Invalid choice. Please enter a number between 1-5.\n\n";
+                cout << "Error: Invalid choice. Please enter a number between 1-6.\n\n";
             }
         }
     } else {
@@ -301,6 +387,33 @@ int main() {
             }
 
             break;
+        }
+
+        // Ask if user wants to limit gates
+        char limitGates;
+        cout << "\nDo you want to limit the number of available gates? (y/n): ";
+        cin >> limitGates;
+
+        if (limitGates == 'y' || limitGates == 'Y') {
+            while (true) {
+                cout << "Enter maximum number of gates (1-20): ";
+
+                if (!(cin >> maxGates)) {
+                    cout << "Error: Invalid input.\n";
+                    cin.clear();
+                    cin.ignore(10000, '\n');
+                    continue;
+                }
+
+                if (maxGates < 1 || maxGates > 20) {
+                    cout << "Error: Gates must be between 1 and 20.\n";
+                    continue;
+                }
+
+                cout << "\n*** GATE LIMIT SET: " << maxGates << " gates ***\n";
+                cout << "*** Flights may be UNASSIGNED if capacity exceeded ***\n";
+                break;
+            }
         }
 
         for (int i = 0; i < n; i++) {
@@ -395,10 +508,14 @@ int main() {
     }
 
     cout << "\nProcessing " << flights.size() << " flights...\n";
-    vector<Gate> gates = assignGates(flights);
+    if (maxGates != -1) {
+        cout << "Gate capacity limit: " << maxGates << " gates\n";
+    }
+
+    vector<Gate> gates = assignGates(flights, 20, maxGates);
 
     // Display results
-    displayResults(flights, gates);
+    displayResults(flights, gates, 20);
 
     return 0;
 }
