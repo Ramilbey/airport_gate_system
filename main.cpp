@@ -283,7 +283,7 @@ void loadDatasetAndRun(int datasetNumber) {
         case 1:
             displayHeader("DATASET 1: Teacher's Sample (20 Flights)");
             numFlights = 20;
-            // Teacher's sample dataset - FIRST OPTION
+            // Given sample dataset - FIRST OPTION
             flights[0] = (Flight){1, "EWA101", 300, 390, -1, false};   // 05:00-06:30
             flights[1] = (Flight){2, "EWA102", 330, 420, -1, false};   // 05:30-07:00
             flights[2] = (Flight){3, "EWA103", 360, 450, -1, false};   // 06:00-07:30
