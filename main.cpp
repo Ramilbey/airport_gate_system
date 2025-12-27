@@ -448,8 +448,6 @@ void runAlgorithmAndDisplay(void) {
     printf("                 + O(n * g) for assignment\n");
     printf("  Space complexity: O(n + g)\n");
     printf("  where n = %d flights, g = %d gates\n", numFlights, numGates);
-    printf("\n  Greedy optimality: The algorithm always finds the minimum\n");
-    printf("  number of gates needed (proven by 'stays ahead' argument).\n");
     
     waitForEnter();
 }
