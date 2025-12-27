@@ -48,23 +48,17 @@ int findAvailableGate(int arrivalTime);
 void assignFlightsToGates(void);
 void displayResults(void);
 void displayGateUnavailableTimings(void);
-void loadDatasetAndRun(int datasetNumber);
-void inputCustomFlightsAndRun(void);
-void runAlgorithmAndDisplay(void);
+void loadDataset(int datasetNumber);
+void inputCustomFlights(void);
 bool validateTimeFormat(const char* timeStr);
 void getFlightCode(char* buffer, int flightNum);
 void clearInputBuffer(void);
-void waitForEnter(void);
+void runAlgorithm(void);
 
 /* UTILITY FUNCTIONS */
 void clearInputBuffer(void) {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
-}
-
-void waitForEnter(void) {
-    printf("\n  Press Enter to continue...");
-    clearInputBuffer();
 }
 
 int timeToMinutes(const char* timeStr) {
@@ -210,174 +204,176 @@ void assignFlightsToGates(void) {
     }
 }
 
-/* OUTPUT FUNCTIONS */
+/* OUTPUT FUNCTIONS - FIXED TO MATCH REQUIREMENTS */
 void displayResults(void) {
     int unassignedCount = 0;
     
-    displayHeader("GATE ASSIGNMENT RESULTS");
+    /* REQUIREMENT i: Display minimum number of gates */
+    printf("\n============================================================\n");
+    printf("  MINIMUM NUMBER OF GATES REQUIRED: %d\n", numGates);
+    printf("============================================================\n\n");
     
-    printf("\n  MINIMUM NUMBER OF GATES REQUIRED: %d\n\n", numGates);
-    
-    printf("  +------------+----------+-----------+-------------+\n");
-    printf("  |   Flight   |  Arrival | Departure | Gate Info   |\n");
-    printf("  +------------+----------+-----------+-------------+\n");
+    /* REQUIREMENT ii: Show list of flights assigned to specific gates */
+    printf("FLIGHT ASSIGNMENTS TO GATES:\n");
+    printf("+------------+----------+-----------+-------------------+\n");
+    printf("| Flight No. | Arrival  | Departure | Gate Information  |\n");
+    printf("+------------+----------+-----------+-------------------+\n");
     
     for (int i = 0; i < numFlights; i++) {
-        printf("  | %-10s |   ", flights[i].flightCode);
+        printf("| %-10s | ", flights[i].flightCode);
         printTime(flights[i].arrivalTime);
-        printf("  |   ");
+        printf("  | ");
         printTime(flights[i].departureTime);
-        printf("   |");
+        printf("   | ");
         
         if (!flights[i].isAssigned) {
-            printf(" UNASSIGNED  |\n");
+            printf("UNASSIGNED         |\n");
             unassignedCount++;
         } else {
-            printf(" Gate %-3d    |\n", flights[i].assignedGate);
+            printf("Gate %-2d           |\n", flights[i].assignedGate);
         }
     }
-    printf("  +------------+----------+-----------+-------------+\n");
+    printf("+------------+----------+-----------+-------------------+\n");
     
-    printf("\n  SUMMARY:\n");
-    printf("  - Total flights: %d\n", numFlights);
-    printf("  - Successfully assigned: %d\n", numFlights - unassignedCount);
-    printf("  - Unassigned flights: %d\n", unassignedCount);
-    printf("  - Gates utilized: %d\n\n", numGates);
+    printf("\nSUMMARY:\n");
+    printf("- Total flights processed: %d\n", numFlights);
+    printf("- Flights successfully assigned: %d\n", numFlights - unassignedCount);
+    printf("- Flights unassigned: %d\n", unassignedCount);
+    printf("- Minimum gates utilized: %d\n\n", numGates);
 }
 
 void displayGateUnavailableTimings(void) {
-    displayHeader("GATE UNAVAILABILITY TIMINGS");
-    printf("\n  (Gates unavailable for %d minutes after each departure)\n\n", CLEANING_TIME);
+    /* REQUIREMENT iii: List gate number and timings for cleaning */
+    printf("\n============================================================\n");
+    printf("  GATE UNAVAILABILITY TIMINGS DURING CLEANING AND CHECKS\n");
+    printf("  (Each gate unavailable for %d minutes after departure)\n", CLEANING_TIME);
+    printf("============================================================\n\n");
     
     bool hasCleaningPeriods = false;
     
     for (int g = 0; g < numGates; g++) {
         if (gates[g].cleaningCount > 0) {
             hasCleaningPeriods = true;
-            printf("  Gate %d:\n", g + 1);
-            printf("  +---------------------+---------------------+\n");
-            printf("  |    Start Time       |     End Time        |\n");
-            printf("  +---------------------+---------------------+\n");
+            printf("GATE %d CLEANING PERIODS:\n", g + 1);
+            printf("+---------------------+---------------------+\n");
+            printf("|    Start Time       |     End Time        |\n");
+            printf("+---------------------+---------------------+\n");
             
             for (int c = 0; c < gates[g].cleaningCount; c++) {
-                printf("  |       ");
+                printf("|       ");
                 printTime(gates[g].cleaningStartTimes[c]);
                 printf("       |       ");
                 printTime(gates[g].cleaningEndTimes[c]);
                 printf("       |\n");
             }
-            printf("  +---------------------+---------------------+\n\n");
+            printf("+---------------------+---------------------+\n\n");
         }
     }
     
     if (!hasCleaningPeriods) {
-        printf("  No cleaning periods recorded.\n");
+        printf("No cleaning periods recorded.\n\n");
     }
 }
 
-/* DATASET LOADING - Teacher's sample as FIRST option */
-void loadDatasetAndRun(int datasetNumber) {
+/* DATASET LOADING - FIXED: Now loads only, doesn't run */
+void loadDataset(int datasetNumber) {
     resetData();
     
     switch (datasetNumber) {
         case 1:
-            displayHeader("DATASET 1: Teacher's Sample (20 Flights)");
+            displayHeader("LOADED: Teacher's Sample Dataset (20 Flights)");
             numFlights = 20;
-            // Given sample dataset - FIRST OPTION
-            flights[0] = (Flight){1, "EWA101", 300, 390, -1, false};   // 05:00-06:30
-            flights[1] = (Flight){2, "EWA102", 330, 420, -1, false};   // 05:30-07:00
-            flights[2] = (Flight){3, "EWA103", 360, 450, -1, false};   // 06:00-07:30
-            flights[3] = (Flight){4, "EWA104", 405, 510, -1, false};   // 06:45-08:30
-            flights[4] = (Flight){5, "EWA105", 420, 540, -1, false};   // 07:00-09:00
-            flights[5] = (Flight){6, "EWA106", 450, 570, -1, false};   // 07:30-09:30
-            flights[6] = (Flight){7, "EWA107", 480, 600, -1, false};   // 08:00-10:00
-            flights[7] = (Flight){8, "EWA108", 540, 630, -1, false};   // 09:00-10:30
-            flights[8] = (Flight){9, "EWA109", 585, 690, -1, false};   // 09:45-11:30
-            flights[9] = (Flight){10, "EWA110", 600, 720, -1, false};  // 10:00-12:00
-            flights[10] = (Flight){11, "EWA111", 660, 750, -1, false}; // 11:00-12:30
-            flights[11] = (Flight){12, "EWA112", 705, 795, -1, false}; // 11:45-13:15
-            flights[12] = (Flight){13, "EWA113", 720, 825, -1, false}; // 12:00-13:45
-            flights[13] = (Flight){14, "EWA114", 780, 870, -1, false}; // 13:00-14:30
-            flights[14] = (Flight){15, "EWA115", 840, 930, -1, false}; // 14:00-15:30
-            flights[15] = (Flight){16, "EWA116", 870, 960, -1, false}; // 14:30-16:00
-            flights[16] = (Flight){17, "EWA117", 900, 1020, -1, false};// 15:00-17:00
-            flights[17] = (Flight){18, "EWA118", 960, 1065, -1, false};// 16:00-17:45
-            flights[18] = (Flight){19, "EWA119", 1020, 1140, -1, false};// 17:00-19:00
-            flights[19] = (Flight){20, "EWA120", 1080, 1200, -1, false};// 18:00-20:00
+            flights[0] = (Flight){1, "EWA101", 300, 390, -1, false};
+            flights[1] = (Flight){2, "EWA102", 330, 420, -1, false};
+            flights[2] = (Flight){3, "EWA103", 360, 450, -1, false};
+            flights[3] = (Flight){4, "EWA104", 405, 510, -1, false};
+            flights[4] = (Flight){5, "EWA105", 420, 540, -1, false};
+            flights[5] = (Flight){6, "EWA106", 450, 570, -1, false};
+            flights[6] = (Flight){7, "EWA107", 480, 600, -1, false};
+            flights[7] = (Flight){8, "EWA108", 540, 630, -1, false};
+            flights[8] = (Flight){9, "EWA109", 585, 690, -1, false};
+            flights[9] = (Flight){10, "EWA110", 600, 720, -1, false};
+            flights[10] = (Flight){11, "EWA111", 660, 750, -1, false};
+            flights[11] = (Flight){12, "EWA112", 705, 795, -1, false};
+            flights[12] = (Flight){13, "EWA113", 720, 825, -1, false};
+            flights[13] = (Flight){14, "EWA114", 780, 870, -1, false};
+            flights[14] = (Flight){15, "EWA115", 840, 930, -1, false};
+            flights[15] = (Flight){16, "EWA116", 870, 960, -1, false};
+            flights[16] = (Flight){17, "EWA117", 900, 1020, -1, false};
+            flights[17] = (Flight){18, "EWA118", 960, 1065, -1, false};
+            flights[18] = (Flight){19, "EWA119", 1020, 1140, -1, false};
+            flights[19] = (Flight){20, "EWA120", 1080, 1200, -1, false};
             break;
             
         case 2:
-            displayHeader("DATASET 2: Optimal Case - 1 Gate Sufficient");
+            displayHeader("LOADED: Dataset 2 - Sequential Flights");
             numFlights = 4;
-            flights[0] = (Flight){1, "AA101", 480, 600, -1, false};    // 08:00-10:00
-            flights[1] = (Flight){2, "BA102", 630, 750, -1, false};    // 10:30-12:30
-            flights[2] = (Flight){3, "CX103", 780, 900, -1, false};    // 13:00-15:00
-            flights[3] = (Flight){4, "EK104", 930, 1050, -1, false};   // 15:30-17:30
+            flights[0] = (Flight){1, "FL201", 480, 600, -1, false};
+            flights[1] = (Flight){2, "FL202", 630, 750, -1, false};
+            flights[2] = (Flight){3, "FL203", 780, 900, -1, false};
+            flights[3] = (Flight){4, "FL204", 930, 1050, -1, false};
             break;
             
         case 3:
-            displayHeader("DATASET 3: Worst Case - All Overlap");
+            displayHeader("LOADED: Dataset 3 - Complete Overlap");
             numFlights = 5;
-            flights[0] = (Flight){1, "AA201", 840, 960, -1, false};    // 14:00-16:00
-            flights[1] = (Flight){2, "BA202", 840, 960, -1, false};    // 14:00-16:00
-            flights[2] = (Flight){3, "CX203", 840, 960, -1, false};    // 14:00-16:00
-            flights[3] = (Flight){4, "EK204", 840, 960, -1, false};    // 14:00-16:00
-            flights[4] = (Flight){5, "SQ205", 840, 960, -1, false};    // 14:00-16:00
+            flights[0] = (Flight){1, "FL301", 840, 960, -1, false};
+            flights[1] = (Flight){2, "FL302", 840, 960, -1, false};
+            flights[2] = (Flight){3, "FL303", 840, 960, -1, false};
+            flights[3] = (Flight){4, "FL304", 840, 960, -1, false};
+            flights[4] = (Flight){5, "FL305", 840, 960, -1, false};
             break;
             
         case 4:
-            displayHeader("DATASET 4: Cleaning Time Critical");
+            displayHeader("LOADED: Dataset 4 - Cleaning Time Critical");
             numFlights = 4;
-            flights[0] = (Flight){1, "AA301", 540, 600, -1, false};    // 09:00-10:00
-            flights[1] = (Flight){2, "BA302", 615, 675, -1, false};    // 10:15-11:15
-            flights[2] = (Flight){3, "CX303", 640, 700, -1, false};    // 10:40-11:40
-            flights[3] = (Flight){4, "EK304", 695, 755, -1, false};    // 11:35-12:35
+            flights[0] = (Flight){1, "FL401", 540, 600, -1, false};
+            flights[1] = (Flight){2, "FL402", 615, 675, -1, false};
+            flights[2] = (Flight){3, "FL403", 640, 700, -1, false};
+            flights[3] = (Flight){4, "FL404", 695, 755, -1, false};
             break;
             
         case 5:
-            displayHeader("DATASET 5: Real Peak Hours");
+            displayHeader("LOADED: Dataset 5 - Peak Hour Simulation");
             numFlights = 8;
-            flights[0] = (Flight){1, "AA401", 1020, 1080, -1, false};  // 17:00-18:00
-            flights[1] = (Flight){2, "BA402", 1035, 1095, -1, false};  // 17:15-18:15
-            flights[2] = (Flight){3, "CX403", 1050, 1110, -1, false};  // 17:30-18:30
-            flights[3] = (Flight){4, "EK404", 1065, 1125, -1, false};  // 17:45-18:45
-            flights[4] = (Flight){5, "SQ405", 1080, 1140, -1, false};  // 18:00-19:00
-            flights[5] = (Flight){6, "MH406", 1100, 1160, -1, false};  // 18:20-19:20
-            flights[6] = (Flight){7, "QF407", 1140, 1200, -1, false};  // 19:00-20:00
-            flights[7] = (Flight){8, "JL408", 1170, 1230, -1, false};  // 19:30-20:30
+            flights[0] = (Flight){1, "FL501", 1020, 1080, -1, false};
+            flights[1] = (Flight){2, "FL502", 1035, 1095, -1, false};
+            flights[2] = (Flight){3, "FL503", 1050, 1110, -1, false};
+            flights[3] = (Flight){4, "FL504", 1065, 1125, -1, false};
+            flights[4] = (Flight){5, "FL505", 1080, 1140, -1, false};
+            flights[5] = (Flight){6, "FL506", 1100, 1160, -1, false};
+            flights[6] = (Flight){7, "FL507", 1140, 1200, -1, false};
+            flights[7] = (Flight){8, "FL508", 1170, 1230, -1, false};
             break;
             
         case 6:
-            displayHeader("DATASET 6: Mixed Pattern");
+            displayHeader("LOADED: Dataset 6 - Mixed Pattern");
             numFlights = 6;
-            flights[0] = (Flight){1, "AA501", 480, 600, -1, false};    // 08:00-10:00
-            flights[1] = (Flight){2, "BA502", 540, 660, -1, false};    // 09:00-11:00
-            flights[2] = (Flight){3, "CX503", 630, 750, -1, false};    // 10:30-12:30
-            flights[3] = (Flight){4, "EK504", 660, 780, -1, false};    // 11:00-13:00
-            flights[4] = (Flight){5, "SQ505", 760, 880, -1, false};    // 12:40-14:40
-            flights[5] = (Flight){6, "MH506", 800, 920, -1, false};    // 13:20-15:20
+            flights[0] = (Flight){1, "FL601", 480, 600, -1, false};
+            flights[1] = (Flight){2, "FL602", 540, 660, -1, false};
+            flights[2] = (Flight){3, "FL603", 630, 750, -1, false};
+            flights[3] = (Flight){4, "FL604", 660, 780, -1, false};
+            flights[4] = (Flight){5, "FL605", 760, 880, -1, false};
+            flights[5] = (Flight){6, "FL606", 800, 920, -1, false};
             break;
     }
     
-    printf("\n  Loaded %d flights:\n", numFlights);
-    printf("  +------------+----------+-----------+\n");
-    printf("  |   Flight   |  Arrival | Departure |\n");
-    printf("  +------------+----------+-----------+\n");
+    printf("\nLoaded %d flights:\n", numFlights);
+    printf("+------------+----------+-----------+\n");
+    printf("|   Flight   |  Arrival | Departure |\n");
+    printf("+------------+----------+-----------+\n");
     for (int i = 0; i < numFlights; i++) {
-        printf("  | %-10s |   ", flights[i].flightCode);
+        printf("| %-10s |   ", flights[i].flightCode);
         printTime(flights[i].arrivalTime);
         printf("  |   ");
         printTime(flights[i].departureTime);
         printf("   |\n");
     }
-    printf("  +------------+----------+-----------+\n");
-    
-    printf("\n  Running greedy algorithm...\n");
-    runAlgorithmAndDisplay();
+    printf("+------------+----------+-----------+\n\n");
 }
 
-/* CUSTOM INPUT */
-void inputCustomFlightsAndRun(void) {
+/* CUSTOM INPUT - FIXED: Now inputs only, doesn't run */
+void inputCustomFlights(void) {
     char buffer[BUFFER_SIZE];
     char arrivalStr[10], departureStr[10];
     int n;
@@ -386,9 +382,9 @@ void inputCustomFlightsAndRun(void) {
     displayHeader("CUSTOM FLIGHT INPUT");
     
     do {
-        printf("\n  Enter number of flights (1-%d): ", MAX_FLIGHTS);
+        printf("\nEnter number of flights (1-%d): ", MAX_FLIGHTS);
         if (scanf("%d", &n) != 1 || n < 1 || n > MAX_FLIGHTS) {
-            printf("  ERROR: Please enter a number between 1 and %d.\n", MAX_FLIGHTS);
+            printf("ERROR: Please enter a number between 1 and %d.\n", MAX_FLIGHTS);
             clearInputBuffer();
             n = 0;
         }
@@ -397,26 +393,25 @@ void inputCustomFlightsAndRun(void) {
     clearInputBuffer();
     numFlights = n;
     
-    printf("\n  Enter flight details (HH:MM or HHMM format, 24-hour)\n");
-    printf("  Examples: 14:30 or 1430, 09:15 or 0915, 05:00 or 0500\n\n");
+    printf("\nEnter flight details (HH:MM or HHMM format, 24-hour)\n");
+    printf("Examples: 14:30 or 1430, 09:15 or 0915, 05:00 or 0500\n\n");
     
     for (int i = 0; i < numFlights; i++) {
         flights[i].flightNumber = i + 1;
         
-        // Get flight code
-        printf("  Flight %d - Flight code (e.g., EWA101): ", i + 1);
+        printf("Flight %d - Flight code (e.g., FL001): ", i + 1);
         fgets(buffer, sizeof(buffer), stdin);
         buffer[strcspn(buffer, "\n")] = 0;
         strcpy(flights[i].flightCode, buffer);
         
         do {
-            printf("  Flight %s - Arrival time (HH:MM or HHMM): ", flights[i].flightCode);
+            printf("Flight %s - Arrival time (HH:MM or HHMM): ", flights[i].flightCode);
             fgets(buffer, sizeof(buffer), stdin);
             buffer[strcspn(buffer, "\n")] = 0;
             strcpy(arrivalStr, buffer);
             
             if (!validateTimeFormat(arrivalStr)) {
-                printf("  ERROR: Invalid format. Use HH:MM or HHMM (00:00-23:59).\n");
+                printf("ERROR: Invalid format. Use HH:MM or HHMM (00:00-23:59).\n");
                 continue;
             }
             flights[i].arrivalTime = timeToMinutes(arrivalStr);
@@ -424,19 +419,19 @@ void inputCustomFlightsAndRun(void) {
         } while (1);
         
         do {
-            printf("  Flight %s - Departure time (HH:MM or HHMM): ", flights[i].flightCode);
+            printf("Flight %s - Departure time (HH:MM or HHMM): ", flights[i].flightCode);
             fgets(buffer, sizeof(buffer), stdin);
             buffer[strcspn(buffer, "\n")] = 0;
             strcpy(departureStr, buffer);
             
             if (!validateTimeFormat(departureStr)) {
-                printf("  ERROR: Invalid format. Use HH:MM or HHMM (00:00-23:59).\n");
+                printf("ERROR: Invalid format. Use HH:MM or HHMM (00:00-23:59).\n");
                 continue;
             }
             
             int depTime = timeToMinutes(departureStr);
             if (depTime <= flights[i].arrivalTime) {
-                printf("  ERROR: Departure must be after arrival time.\n");
+                printf("ERROR: Departure must be after arrival time.\n");
                 continue;
             }
             
@@ -449,32 +444,19 @@ void inputCustomFlightsAndRun(void) {
         printf("\n");
     }
     
-    printf("  Successfully entered %d flights.\n", numFlights);
-    
-    printf("\n  Entered flights:\n");
-    printf("  +------------+----------+-----------+\n");
-    printf("  |   Flight   |  Arrival | Departure |\n");
-    printf("  +------------+----------+-----------+\n");
-    for (int i = 0; i < numFlights; i++) {
-        printf("  | %-10s |   ", flights[i].flightCode);
-        printTime(flights[i].arrivalTime);
-        printf("  |   ");
-        printTime(flights[i].departureTime);
-        printf("   |\n");
-    }
-    printf("  +------------+----------+-----------+\n");
-    
-    printf("\n  Running greedy algorithm...\n");
-    runAlgorithmAndDisplay();
+    printf("Successfully entered %d flights.\n\n", numFlights);
 }
 
-/* RUN ALGORITHM AND DISPLAY */
-void runAlgorithmAndDisplay(void) {
+/* RUN ALGORITHM - SEPARATE FUNCTION */
+void runAlgorithm(void) {
     if (numFlights == 0) {
-        printf("\n  ERROR: No flights to process!\n");
-        waitForEnter();
+        printf("\nERROR: No flights loaded! Please load a dataset or enter flights first.\n\n");
         return;
     }
+    
+    printf("\n============================================================\n");
+    printf("  RUNNING GREEDY ALGORITHM FOR GATE SCHEDULING\n");
+    printf("============================================================\n\n");
     
     clock_t start = clock();
     assignFlightsToGates();
@@ -482,54 +464,58 @@ void runAlgorithmAndDisplay(void) {
     
     double timeTaken = ((double)(end - start)) / CLOCKS_PER_SEC * 1000000;
     
+    /* DISPLAY ALL OUTPUT AT ONCE (as required) */
     displayResults();
     displayGateUnavailableTimings();
     
-    displayHeader("ALGORITHM PERFORMANCE");
-    printf("\n  Execution time: %.2f microseconds\n", timeTaken);
-    printf("  Time complexity: O(n log n) for sorting\n");
-    printf("                 + O(n * g) for assignment\n");
-    printf("  Space complexity: O(n + g)\n");
-    printf("  where n = %d flights, g = %d gates\n", numFlights, numGates);
-    printf("\n  Greedy optimality: The algorithm always finds the minimum\n");
-    printf("  number of gates needed (proven by 'stays ahead' argument).\n");
-    
-    waitForEnter();
+    /* Performance info (optional) */
+    printf("ALGORITHM PERFORMANCE:\n");
+    printf("- Execution time: %.2f microseconds\n", timeTaken);
+    printf("- Time complexity: O(n log n) where n = %d flights\n", numFlights);
+    printf("- Space complexity: O(n + g) where g = %d gates\n\n", numGates);
 }
 
-/* UPDATED MENU - Teacher's sample as FIRST option */
+/* UPDATED MENU - Matches assignment requirements */
 void displayMenu(void) {
-    printf("\n");
-    printf("  +==============================================+\n");
-    printf("  |   1. The Given Sample Dataset                |\n");
-    printf("  |   2. Load Dataset 2 (Optimal: 1 Gate)        |\n");
-    printf("  |   3. Load Dataset 3 (Worst: 5 Gates)         |\n");
-    printf("  |   4. Load Dataset 4 (Cleaning Critical)      |\n");
-    printf("  |   5. Load Dataset 5 (Peak Hour: 4 Gates)     |\n");
-    printf("  |   6. Load Dataset 6 (Mixed: 2 Gates)         |\n");
-    printf("  |   7. Input Custom Flights                    |\n");
-    printf("  |   0. Exit                                    |\n");
-    printf("  +==============================================+\n");
-    printf("\n  Enter your choice (0-7): ");
+    printf("    AIRPORT GATE SCHEDULING SYSTEM - GREEDY ALGORITHM\n");
+    printf("============================================================\n");
+    printf("    1. Load Teacher's Sample Dataset (20 flights)\n");
+    printf("    2. Load Dataset 2 - Sequential Flights\n");
+    printf("    3. Load Dataset 3 - Complete Overlap\n");
+    printf("    4. Load Dataset 4 - Cleaning Time Critical\n");
+    printf("    5. Load Dataset 5 - Peak Hour Simulation\n");
+    printf("    6. Load Dataset 6 - Mixed Pattern\n");
+    printf("    7. Enter Custom Flights\n");
+    printf("    8. Run Greedy Algorithm\n");
+    printf("    0. Exit\n");
+    printf("============================================================\n");
+    printf("Enter your choice (0-8): ");
 }
 
-/* MAIN FUNCTION */
+/* MAIN FUNCTION - FIXED FLOW */
 int main(void) {
     int choice;
+    printf("\n");
+    printf("============================================================\n");
+    printf("                     Simple Guide                           \n");
+    printf(" Below, list of datasets, to view && load them, pls input choices (1-6). \n");
+    printf(" After loading the dataset, input choice 8 to run Greedy Algorithm. \n");
+    printf("                     Thank You. \n");
+    printf("============================================================\n");
     
     while (1) {
         displayMenu();
         
         if (scanf("%d", &choice) != 1) {
-            printf("\n  ERROR: Invalid input. Please enter a number 0-7.\n");
+            printf("\nERROR: Invalid input. Please enter a number 0-8.\n");
             clearInputBuffer();
             continue;
         }
         clearInputBuffer();
         
         if (choice == 0) {
-            printf("\n  Thank you for using the Gate Scheduling System!\n");
-            printf("  Goodbye!\n\n");
+            printf("\nThank you for using the Gate Scheduling System!\n");
+            printf("Goodbye!\n\n");
             break;
         }
         
@@ -540,13 +526,16 @@ int main(void) {
             case 4:
             case 5:
             case 6:
-                loadDatasetAndRun(choice);
+                loadDataset(choice);  // Just loads, doesn't run
                 break;
             case 7:
-                inputCustomFlightsAndRun();
+                inputCustomFlights();  // Just inputs, doesn't run
+                break;
+            case 8:
+                runAlgorithm();  // Separate run option
                 break;
             default:
-                printf("\n  ERROR: Invalid choice. Please enter 0-7.\n");
+                printf("\nERROR: Invalid choice. Please enter 0-8.\n");
         }
     }
     
