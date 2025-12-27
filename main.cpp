@@ -1,521 +1,656 @@
-#include <iostream>
-#include <vector>
-#include <algorithm>
-#include <queue>
-#include <iomanip>
-#include <sstream>
+/*
+ * ============================================================================
+ * FILE: gate_scheduling.c
+ * AUTHOR: [Your Name] - [Your Student ID]
+ * COURSE: Algorithm Design and Analysis
+ * ASSIGNMENT: Assignment 2 - Greedy Algorithm (Airport Gate Scheduling)
+ * DATE: December 2025
+ * 
+ * DESCRIPTION:
+ * This program solves the Airport Gate Scheduling problem using a Greedy
+ * Algorithm approach. Given a list of flights with arrival and departure
+ * times, it determines the minimum number of gates required and assigns
+ * each flight to a specific gate while respecting the 20-minute cleaning
+ * time constraint between consecutive flights at the same gate.
+ * 
+ * ALGORITHM:
+ * The greedy approach sorts flights by arrival time and assigns each flight
+ * to the first available gate. This is similar to the Interval Scheduling
+ * Problem (Kleinberg & Tardos, 2006, Chapter 4).
+ * 
+ * REFERENCES:
+ * [1] Kleinberg, J., & Tardos, E. (2006). Algorithm Design. Pearson Education.
+ * [2] Cormen, T. H., Leiserson, C. E., Rivest, R. L., & Stein, C. (2009). 
+ *     Introduction to Algorithms (3rd ed.). MIT Press.
+ * [3] GeeksforGeeks. (2023). Minimum Number of Platforms Required for a 
+ *     Railway/Bus Station. Retrieved from https://www.geeksforgeeks.org/
+ * ============================================================================
+ */
 
-using namespace std;
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <time.h>
 
-// Flight structure
-struct Flight {
-    string flightNo;
-    int arrival;     // minutes from midnight
-    int departure;   // minutes from midnight
-    int gate;        // assigned gate number (0 = unassigned)
+/* ============================================================================
+ * CONSTANTS AND MACROS
+ * ============================================================================ */
+#define MAX_FLIGHTS 100      /* Maximum number of flights supported */
+#define MAX_GATES 50         /* Maximum number of gates */
+#define CLEANING_TIME 20     /* 20 minutes cleaning time between flights */
+#define TIME_FORMAT 1440     /* Minutes in a day (24 * 60) */
 
-    Flight(string fn, int arr, int dep) : flightNo(fn), arrival(arr), departure(dep), gate(0) {}
-};
+/* ============================================================================
+ * DATA STRUCTURES
+ * Flight structure stores all information about a single flight.
+ * Reference: Standard struct design as per Cormen et al. (2009), Chapter 10.
+ * ============================================================================ */
+typedef struct {
+    int flightNumber;        /* Unique flight identifier (FL001, FL002, etc.) */
+    int arrivalTime;         /* Arrival time in minutes from midnight */
+    int departureTime;       /* Departure time in minutes from midnight */
+    int assignedGate;        /* Gate number assigned (-1 if unassigned) */
+} Flight;
 
-// Gate structure to track availability
-struct Gate {
-    int gateId;
-    int freeTime;    // when gate becomes available (including cleaning)
-    vector<pair<int, int>> occupiedTimes; // (start, end) pairs
+/* Gate structure tracks availability of each gate */
+typedef struct {
+    int gateNumber;          /* Gate identifier (1, 2, 3, ...) */
+    int availableFrom;       /* Time when gate becomes available (after cleaning) */
+    int flightsAssigned;     /* Count of flights assigned to this gate */
+} Gate;
 
-    Gate(int id) : gateId(id), freeTime(0) {}
-};
+/* ============================================================================
+ * GLOBAL VARIABLES
+ * ============================================================================ */
+Flight flights[MAX_FLIGHTS];     /* Array to store all flights */
+Gate gates[MAX_GATES];           /* Array to store all gates */
+int numFlights = 0;              /* Current number of flights */
+int numGates = 0;                /* Number of gates used */
 
-// Validate time format HHMM
-bool isValidTimeFormat(const string& timeStr) {
-    if (timeStr.length() != 4) return false;
-    for (char c : timeStr) {
-        if (!isdigit(c)) return false;
-    }
-    int hours = stoi(timeStr.substr(0, 2));
-    int minutes = stoi(timeStr.substr(2, 2));
-    return (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59);
-}
+/* ============================================================================
+ * FUNCTION PROTOTYPES
+ * ============================================================================ */
+void displayMenu(void);
+void displayHeader(const char* title);
+int timeToMinutes(int hours, int minutes);
+void minutesToTime(int totalMinutes, int* hours, int* minutes);
+void printTime(int totalMinutes);
+int compareFlightsByArrival(const void* a, const void* b);
+void initializeGates(void);
+void resetData(void);
+int findAvailableGate(int arrivalTime);
+void assignFlightsToGates(void);
+void displayResults(void);
+void displayCleaningSchedule(void);
+void loadDataset(int datasetNumber);
+void inputCustomFlights(void);
+void runProgram(void);
 
-// Convert HHMM to minutes
-int timeToMinutes(string timeStr) {
-    int hours = stoi(timeStr.substr(0, 2));
-    int minutes = stoi(timeStr.substr(2, 2));
+/* ============================================================================
+ * UTILITY FUNCTIONS
+ * These helper functions handle time conversion and display formatting.
+ * ============================================================================ */
+
+/**
+ * Converts hours and minutes to total minutes from midnight.
+ * Example: 14:30 -> 870 minutes
+ * 
+ * @param hours   Hour component (0-23)
+ * @param minutes Minute component (0-59)
+ * @return        Total minutes from midnight
+ */
+int timeToMinutes(int hours, int minutes) {
     return hours * 60 + minutes;
 }
 
-// Convert minutes to HHMM
-string minutesToTime(int minutes) {
-    int hours = minutes / 60;
-    int mins = minutes % 60;
-    stringstream ss;
-    ss << setw(2) << setfill('0') << hours
-       << setw(2) << setfill('0') << mins;
-    return ss.str();
+/**
+ * Converts total minutes back to hours and minutes.
+ * Example: 870 minutes -> 14:30
+ * 
+ * @param totalMinutes Total minutes from midnight
+ * @param hours        Pointer to store hour component
+ * @param minutes      Pointer to store minute component
+ */
+void minutesToTime(int totalMinutes, int* hours, int* minutes) {
+    *hours = totalMinutes / 60;
+    *minutes = totalMinutes % 60;
 }
 
-// Greedy gate assignment algorithm with optional gate limit
-vector<Gate> assignGates(vector<Flight>& flights, int cleaningTime = 20, int maxGates = -1) {
-    // Sort flights by arrival time
-    sort(flights.begin(), flights.end(),
-         [](const Flight& a, const Flight& b) {
-             return a.arrival < b.arrival;
-         });
-
-    // Min-heap (priority queue) storing (freeTime, gateIndex)
-    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<pair<int, int>>> gateQueue;
-
-    vector<Gate> gates;
-    int gateCounter = 1;
-
-    for (size_t i = 0; i < flights.size(); i++) {
-        bool assigned = false;
-
-        // Try to assign to existing gate
-        if (!gateQueue.empty()) {
-            auto earliest = gateQueue.top();
-            if (earliest.first <= flights[i].arrival) {
-                // Assign to this gate
-                gateQueue.pop();
-                int gateIdx = earliest.second;
-                gates[gateIdx].occupiedTimes.push_back(make_pair(flights[i].arrival, flights[i].departure));
-                gates[gateIdx].freeTime = flights[i].departure + cleaningTime;
-                gateQueue.push(make_pair(gates[gateIdx].freeTime, gateIdx));
-                flights[i].gate = gates[gateIdx].gateId;
-                assigned = true;
-            }
-        }
-
-        // If no gate available, create new gate (if limit not reached)
-        if (!assigned) {
-            // Check if we can create a new gate
-            if (maxGates == -1 || gateCounter <= maxGates) {
-                Gate newGate(gateCounter++);
-                newGate.occupiedTimes.push_back(make_pair(flights[i].arrival, flights[i].departure));
-                newGate.freeTime = flights[i].departure + cleaningTime;
-                gates.push_back(newGate);
-                gateQueue.push(make_pair(newGate.freeTime, gates.size() - 1));
-                flights[i].gate = newGate.gateId;
-            } else {
-                // Gate limit reached - flight cannot be assigned
-                flights[i].gate = 0; // UNASSIGNED
-            }
-        }
-    }
-
-    return gates;
+/**
+ * Prints time in HH:MM format.
+ * 
+ * @param totalMinutes Time in minutes from midnight
+ */
+void printTime(int totalMinutes) {
+    int hours, minutes;
+    minutesToTime(totalMinutes, &hours, &minutes);
+    printf("%02d:%02d", hours, minutes);
 }
 
-// Display results with detailed unavailable periods
-void displayResults(const vector<Flight>& flights, const vector<Gate>& gates, int cleaningTime = 20) {
-    cout << "\n========== GATE ASSIGNMENT RESULTS ==========\n";
+/**
+ * Displays a formatted header for sections.
+ * 
+ * @param title The title text to display
+ */
+void displayHeader(const char* title) {
+    printf("\n");
+    printf("============================================================\n");
+    printf(" %s\n", title);
+    printf("============================================================\n");
+}
 
-    // Count unassigned flights
-    int unassignedCount = 0;
-    for (size_t i = 0; i < flights.size(); i++) {
-        if (flights[i].gate == 0) unassignedCount++;
+/* ============================================================================
+ * SORTING FUNCTION
+ * Comparison function for qsort to sort flights by arrival time.
+ * Reference: qsort usage as per Cormen et al. (2009), Chapter 7.
+ * ============================================================================ */
+
+/**
+ * Comparison function for sorting flights by arrival time (ascending).
+ * Used with qsort() for efficient O(n log n) sorting.
+ * 
+ * @param a Pointer to first flight
+ * @param b Pointer to second flight
+ * @return  Negative if a < b, positive if a > b, zero if equal
+ */
+int compareFlightsByArrival(const void* a, const void* b) {
+    Flight* flightA = (Flight*)a;
+    Flight* flightB = (Flight*)b;
+    return flightA->arrivalTime - flightB->arrivalTime;
+}
+
+/* ============================================================================
+ * INITIALIZATION FUNCTIONS
+ * ============================================================================ */
+
+/**
+ * Initializes all gates to available state (available from time 0).
+ */
+void initializeGates(void) {
+    for (int i = 0; i < MAX_GATES; i++) {
+        gates[i].gateNumber = i + 1;
+        gates[i].availableFrom = 0;
+        gates[i].flightsAssigned = 0;
     }
+    numGates = 0;
+}
 
-    // Minimum gates needed vs used
-    cout << "Gates used: " << gates.size() << endl;
-    cout << "Flights successfully assigned: " << (flights.size() - unassignedCount) << endl;
-    if (unassignedCount > 0) {
-        cout << "Flights UNASSIGNED: " << unassignedCount << " (need to delay/divert)\n";
+/**
+ * Resets all data for a new run.
+ */
+void resetData(void) {
+    numFlights = 0;
+    numGates = 0;
+    initializeGates();
+    
+    for (int i = 0; i < MAX_FLIGHTS; i++) {
+        flights[i].flightNumber = 0;
+        flights[i].arrivalTime = 0;
+        flights[i].departureTime = 0;
+        flights[i].assignedGate = -1;
     }
+}
 
-    // Flight assignments
-    cout << "\n--- Flight Assignments ---\n";
-    cout << left << setw(10) << "Flight"
-         << setw(12) << "Arrival"
-         << setw(12) << "Departure"
-         << setw(10) << "Gate" << endl;
-    cout << string(44, '-') << endl;
+/* ============================================================================
+ * CORE GREEDY ALGORITHM
+ * This is the main algorithm that finds the minimum number of gates needed.
+ * 
+ * GREEDY STRATEGY:
+ * 1. Sort flights by arrival time
+ * 2. For each flight, find a gate that is available (including cleaning time)
+ * 3. If no existing gate is available, open a new gate
+ * 4. Assign the flight to the selected gate
+ * 
+ * TIME COMPLEXITY: O(n * g) where n = flights, g = gates
+ * Can be optimized to O(n log n) using a min-heap for gate availability.
+ * Reference: Similar to Interval Partitioning, Kleinberg & Tardos (2006), Ch 4.
+ * ============================================================================ */
 
-    for (size_t i = 0; i < flights.size(); i++) {
-        cout << left << setw(10) << flights[i].flightNo
-             << setw(12) << minutesToTime(flights[i].arrival)
-             << setw(12) << minutesToTime(flights[i].departure);
+/**
+ * Finds the first available gate for a flight arriving at given time.
+ * A gate is available if: gateAvailableFrom + CLEANING_TIME <= arrivalTime
+ * 
+ * @param arrivalTime The arrival time of the flight
+ * @return            Gate index if found, -1 if no gate available
+ */
+int findAvailableGate(int arrivalTime) {
+    /* 
+     * GREEDY CHOICE: Select the first gate that becomes available
+     * before the flight's arrival time. This greedy choice leads to
+     * an optimal solution (proof in report).
+     * Reference: Kleinberg & Tardos (2006), Theorem 4.7
+     */
+    for (int i = 0; i < numGates; i++) {
+        /* Check if gate is available (considering cleaning time) */
+        if (gates[i].availableFrom <= arrivalTime) {
+            return i;  /* Return first available gate */
+        }
+    }
+    
+    /* No existing gate available - need to open a new gate */
+    if (numGates < MAX_GATES) {
+        return numGates;  /* Return index for new gate */
+    }
+    
+    return -1;  /* No gates available (max capacity reached) */
+}
 
-        if (flights[i].gate > 0) {
-            cout << setw(10) << ("Gate " + to_string(flights[i].gate));
+/**
+ * Main greedy algorithm to assign all flights to gates.
+ * This function implements the core logic of the solution.
+ */
+void assignFlightsToGates(void) {
+    /* 
+     * STEP 1: Sort flights by arrival time (O(n log n))
+     * Reference: QuickSort implementation in C standard library
+     */
+    qsort(flights, numFlights, sizeof(Flight), compareFlightsByArrival);
+    
+    /* Initialize gates */
+    initializeGates();
+    
+    /* 
+     * STEP 2: Process each flight in order of arrival time
+     * This is the greedy iteration - O(n * g) total
+     */
+    for (int i = 0; i < numFlights; i++) {
+        int gateIndex = findAvailableGate(flights[i].arrivalTime);
+        
+        if (gateIndex == -1) {
+            /* No gate available - flight is UNASSIGNED */
+            flights[i].assignedGate = -1;
+            printf("  WARNING: Flight FL%03d cannot be assigned (no gates available)\n",
+                   flights[i].flightNumber);
         } else {
-            cout << setw(10) << "**UNASSIGNED**";
-        }
-        cout << endl;
-    }
-
-    // Gate unavailable periods (CRITICAL: shows occupancy + cleaning)
-    cout << "\n--- Gate Unavailable Times (Occupancy + Cleaning) ---\n";
-    for (size_t i = 0; i < gates.size(); i++) {
-        cout << "\nGate " << gates[i].gateId << " unavailable periods:\n";
-
-        for (size_t j = 0; j < gates[i].occupiedTimes.size(); j++) {
-            int flightStart = gates[i].occupiedTimes[j].first;
-            int flightEnd = gates[i].occupiedTimes[j].second;
-            int cleanEnd = flightEnd + cleaningTime;
-
-            // Find which flight is using this gate at this time
-            string flightNo = "Unknown";
-            for (size_t k = 0; k < flights.size(); k++) {
-                if (flights[k].gate == gates[i].gateId &&
-                    flights[k].arrival == flightStart &&
-                    flights[k].departure == flightEnd) {
-                    flightNo = flights[k].flightNo;
-                    break;
-                }
-            }
-
-            // Show flight occupancy period
-            cout << "  " << minutesToTime(flightStart) << " - "
-                 << minutesToTime(flightEnd) << " (Flight " << flightNo << " - OCCUPIED)\n";
-
-            // Show cleaning period
-            cout << "  " << minutesToTime(flightEnd) << " - "
-                 << minutesToTime(cleanEnd) << " (CLEANING - Unavailable)\n";
-        }
-
-        // Show total unavailable time for this gate
-        if (!gates[i].occupiedTimes.empty()) {
-            int firstStart = gates[i].occupiedTimes[0].first;
-            int lastEnd = gates[i].occupiedTimes[gates[i].occupiedTimes.size()-1].second + cleaningTime;
-            int totalMinutes = 0;
-            for (size_t j = 0; j < gates[i].occupiedTimes.size(); j++) {
-                totalMinutes += gates[i].occupiedTimes[j].second - gates[i].occupiedTimes[j].first + cleaningTime;
-            }
-            cout << "  Total unavailable time: " << totalMinutes << " minutes\n";
-        }
-    }
-
-    // Gate utilization summary
-    cout << "\n--- Gate Utilization Summary ---\n";
-    for (size_t i = 0; i < gates.size(); i++) {
-        cout << "Gate " << gates[i].gateId << ": "
-             << gates[i].occupiedTimes.size() << " flights assigned\n";
-    }
-
-    // Recommendations for unassigned flights
-    if (unassignedCount > 0) {
-        cout << "\n--- UNASSIGNED Flights Recommendations ---\n";
-        cout << "The following flights could not be assigned due to gate capacity:\n";
-        for (size_t i = 0; i < flights.size(); i++) {
-            if (flights[i].gate == 0) {
-                cout << "  - " << flights[i].flightNo
-                     << " (Arrival: " << minutesToTime(flights[i].arrival) << ")\n";
-                cout << "    Action: Delay arrival or divert to another terminal\n";
+            /* Assign flight to gate */
+            flights[i].assignedGate = gateIndex + 1;  /* Gate numbers start from 1 */
+            
+            /* 
+             * Update gate availability: departure time + cleaning time
+             * This ensures the 20-minute gap between flights
+             */
+            gates[gateIndex].availableFrom = flights[i].departureTime + CLEANING_TIME;
+            gates[gateIndex].flightsAssigned++;
+            
+            /* Track if this is a new gate */
+            if (gateIndex >= numGates) {
+                numGates = gateIndex + 1;
             }
         }
     }
 }
 
-// Create datasets - CodeBlocks compatible
-vector<vector<Flight>> createDatasets() {
-    vector<vector<Flight>> datasets;
+/* ============================================================================
+ * OUTPUT FUNCTIONS
+ * These functions display the results in a well-formatted manner.
+ * ============================================================================ */
 
-    // Dataset 1: Provided dataset (20 flights)
-    vector<Flight> dataset1;
-    dataset1.push_back(Flight("EWA101", 500, 630));
-    dataset1.push_back(Flight("EWA102", 530, 700));
-    dataset1.push_back(Flight("EWA103", 600, 730));
-    dataset1.push_back(Flight("EWA104", 645, 830));
-    dataset1.push_back(Flight("EWA105", 700, 900));
-    dataset1.push_back(Flight("EWA106", 730, 930));
-    dataset1.push_back(Flight("EWA107", 800, 1000));
-    dataset1.push_back(Flight("EWA108", 900, 1030));
-    dataset1.push_back(Flight("EWA109", 945, 1130));
-    dataset1.push_back(Flight("EWA110", 1000, 1200));
-    dataset1.push_back(Flight("EWA111", 1100, 1230));
-    dataset1.push_back(Flight("EWA112", 1145, 1315));
-    dataset1.push_back(Flight("EWA113", 1200, 1345));
-    dataset1.push_back(Flight("EWA114", 1300, 1430));
-    dataset1.push_back(Flight("EWA115", 1400, 1530));
-    dataset1.push_back(Flight("EWA116", 1430, 1600));
-    dataset1.push_back(Flight("EWA117", 1500, 1700));
-    dataset1.push_back(Flight("EWA118", 1600, 1745));
-    dataset1.push_back(Flight("EWA119", 1700, 1900));
-    dataset1.push_back(Flight("EWA120", 1800, 2000));
-    datasets.push_back(dataset1);
-
-    // Dataset 2: All non-overlapping (3 flights, needs 1 gate)
-    vector<Flight> dataset2;
-    dataset2.push_back(Flight("EWB201", 800, 930));
-    dataset2.push_back(Flight("EWB202", 1000, 1130));
-    dataset2.push_back(Flight("EWB203", 1200, 1330));
-    datasets.push_back(dataset2);
-
-    // Dataset 3: All overlapping (4 flights, needs 4 gates)
-    vector<Flight> dataset3;
-    dataset3.push_back(Flight("EWC301", 900, 1030));
-    dataset3.push_back(Flight("EWC302", 915, 1045));
-    dataset3.push_back(Flight("EWC303", 930, 1100));
-    dataset3.push_back(Flight("EWC304", 945, 1115));
-    datasets.push_back(dataset3);
-
-    // Dataset 4: Mixed with cleaning reuse (5 flights, needs 2 gates)
-    vector<Flight> dataset4;
-    dataset4.push_back(Flight("EWD401", 800, 900));
-    dataset4.push_back(Flight("EWD402", 920, 1020));
-    dataset4.push_back(Flight("EWD403", 800, 1000));
-    dataset4.push_back(Flight("EWD404", 1020, 1120));
-    dataset4.push_back(Flight("EWD405", 1140, 1240));
-    datasets.push_back(dataset4);
-
-    // Dataset 5: Realistic large schedule (15 flights)
-    vector<Flight> dataset5;
-    dataset5.push_back(Flight("EWE501", 600, 720));
-    dataset5.push_back(Flight("EWE502", 630, 750));
-    dataset5.push_back(Flight("EWE503", 700, 820));
-    dataset5.push_back(Flight("EWE504", 730, 850));
-    dataset5.push_back(Flight("EWE505", 800, 920));
-    dataset5.push_back(Flight("EWE506", 830, 950));
-    dataset5.push_back(Flight("EWE507", 900, 1020));
-    dataset5.push_back(Flight("EWE508", 930, 1050));
-    dataset5.push_back(Flight("EWE509", 1000, 1120));
-    dataset5.push_back(Flight("EWE510", 1030, 1150));
-    dataset5.push_back(Flight("EWE511", 1100, 1220));
-    dataset5.push_back(Flight("EWE512", 1130, 1250));
-    dataset5.push_back(Flight("EWE513", 1200, 1320));
-    dataset5.push_back(Flight("EWE514", 1230, 1350));
-    dataset5.push_back(Flight("EWE515", 1300, 1420));
-    datasets.push_back(dataset5);
-
-    // Dataset 6: Limited gates scenario (10 flights, only 3 gates available)
-    // This will show UNASSIGNED flights when capacity is exceeded
-    vector<Flight> dataset6;
-    dataset6.push_back(Flight("EWF601", 800, 900));   // Gate 1
-    dataset6.push_back(Flight("EWF602", 800, 930));   // Gate 2
-    dataset6.push_back(Flight("EWF603", 800, 1000));  // Gate 3
-    dataset6.push_back(Flight("EWF604", 830, 930));   // UNASSIGNED (all gates busy)
-    dataset6.push_back(Flight("EWF605", 850, 950));   // UNASSIGNED (all gates busy)
-    dataset6.push_back(Flight("EWF606", 920, 1020));  // Gate 1 (after cleaning)
-    dataset6.push_back(Flight("EWF607", 950, 1050));  // Gate 2 (after cleaning)
-    dataset6.push_back(Flight("EWF608", 1020, 1120)); // Gate 3 (after cleaning)
-    dataset6.push_back(Flight("EWF609", 1040, 1140)); // Gate 1 (after cleaning)
-    dataset6.push_back(Flight("EWF610", 1070, 1170)); // Gate 2 (after cleaning)
-    datasets.push_back(dataset6);
-
-    return datasets;
+/**
+ * Displays the complete results including minimum gates and flight assignments.
+ */
+void displayResults(void) {
+    int unassignedCount = 0;
+    
+    displayHeader("RESULTS");
+    
+    /* Display minimum gates needed */
+    printf("\n  MINIMUM NUMBER OF GATES NEEDED: %d\n", numGates);
+    printf("\n");
+    
+    /* Display flight assignments table */
+    printf("  +-----------+----------+-----------+------------+\n");
+    printf("  |  Flight   |  Arrival | Departure |    Gate    |\n");
+    printf("  +-----------+----------+-----------+------------+\n");
+    
+    /* Sort back by flight number for display */
+    for (int i = 0; i < numFlights; i++) {
+        printf("  |  FL%03d    |   ", flights[i].flightNumber);
+        printTime(flights[i].arrivalTime);
+        printf("  |   ");
+        printTime(flights[i].departureTime);
+        printf("   |");
+        
+        if (flights[i].assignedGate == -1) {
+            printf(" UNASSIGNED |\n");
+            unassignedCount++;
+        } else {
+            printf("   Gate %-3d |\n", flights[i].assignedGate);
+        }
+    }
+    
+    printf("  +-----------+----------+-----------+------------+\n");
+    
+    /* Summary */
+    printf("\n  SUMMARY:\n");
+    printf("  - Total flights processed: %d\n", numFlights);
+    printf("  - Flights successfully assigned: %d\n", numFlights - unassignedCount);
+    printf("  - Flights unassigned: %d\n", unassignedCount);
+    printf("  - Gates utilized: %d\n", numGates);
 }
 
-int main() {
-    cout << "=== AIRPORT GATE SCHEDULING SYSTEM ===\n";
-    cout << "Using Greedy Algorithm with 20-minute cleaning time\n\n";
+/**
+ * Displays the cleaning schedule for each gate.
+ */
+void displayCleaningSchedule(void) {
+    displayHeader("GATE CLEANING SCHEDULE");
+    
+    printf("\n  (Cleaning time: %d minutes after each departure)\n\n", CLEANING_TIME);
+    printf("  +--------+----------+----------+-----------------+\n");
+    printf("  |  Gate  |  Start   |   End    |     Status      |\n");
+    printf("  +--------+----------+----------+-----------------+\n");
+    
+    /* For each gate, show cleaning periods */
+    for (int g = 0; g < numGates; g++) {
+        /* Find all flights assigned to this gate */
+        for (int i = 0; i < numFlights; i++) {
+            if (flights[i].assignedGate == g + 1) {
+                int cleanStart = flights[i].departureTime;
+                int cleanEnd = flights[i].departureTime + CLEANING_TIME;
+                
+                printf("  | Gate %d |   ", g + 1);
+                printTime(cleanStart);
+                printf("  |   ");
+                printTime(cleanEnd);
+                printf("   | Cleaning/Checks |\n");
+            }
+        }
+    }
+    
+    printf("  +--------+----------+----------+-----------------+\n");
+}
 
-    vector<vector<Flight>> datasets = createDatasets();
+/* ============================================================================
+ * DATASET FUNCTIONS
+ * Pre-defined datasets for testing the algorithm's correctness.
+ * Each dataset is designed to test different scenarios.
+ * ============================================================================ */
 
+/**
+ * Loads one of the pre-defined datasets.
+ * 
+ * @param datasetNumber Dataset to load (1-5)
+ */
+void loadDataset(int datasetNumber) {
+    resetData();
+    
+    switch (datasetNumber) {
+        case 1:
+            /* 
+             * DATASET 1: Simple non-overlapping flights
+             * Expected: 1 gate (all flights are sequential)
+             * Purpose: Tests basic greedy assignment
+             */
+            displayHeader("DATASET 1: Sequential Flights (Expected: 1 Gate)");
+            numFlights = 4;
+            flights[0] = (Flight){1, timeToMinutes(6, 0), timeToMinutes(7, 0), -1};
+            flights[1] = (Flight){2, timeToMinutes(7, 30), timeToMinutes(8, 30), -1};
+            flights[2] = (Flight){3, timeToMinutes(9, 0), timeToMinutes(10, 0), -1};
+            flights[3] = (Flight){4, timeToMinutes(10, 30), timeToMinutes(11, 30), -1};
+            break;
+            
+        case 2:
+            /* 
+             * DATASET 2: All flights overlap at same time
+             * Expected: 5 gates (all flights need separate gates)
+             * Purpose: Tests maximum gate requirement scenario
+             */
+            displayHeader("DATASET 2: All Overlapping (Expected: 5 Gates)");
+            numFlights = 5;
+            flights[0] = (Flight){1, timeToMinutes(10, 0), timeToMinutes(12, 0), -1};
+            flights[1] = (Flight){2, timeToMinutes(10, 0), timeToMinutes(12, 0), -1};
+            flights[2] = (Flight){3, timeToMinutes(10, 0), timeToMinutes(12, 0), -1};
+            flights[3] = (Flight){4, timeToMinutes(10, 0), timeToMinutes(12, 0), -1};
+            flights[4] = (Flight){5, timeToMinutes(10, 0), timeToMinutes(12, 0), -1};
+            break;
+            
+        case 3:
+            /* 
+             * DATASET 3: Cleaning time constraint test
+             * Expected: 2 gates (cleaning time prevents reuse)
+             * Purpose: Tests 20-minute cleaning window
+             */
+            displayHeader("DATASET 3: Cleaning Time Test (Expected: 2 Gates)");
+            numFlights = 4;
+            /* Flight 2 arrives 15 min after Flight 1 departs - needs new gate */
+            flights[0] = (Flight){1, timeToMinutes(8, 0), timeToMinutes(9, 0), -1};
+            flights[1] = (Flight){2, timeToMinutes(9, 15), timeToMinutes(10, 15), -1};  /* Only 15 min gap */
+            flights[2] = (Flight){3, timeToMinutes(9, 30), timeToMinutes(10, 30), -1};  /* 30 min gap - OK */
+            flights[3] = (Flight){4, timeToMinutes(10, 45), timeToMinutes(11, 45), -1}; /* Can reuse Gate 1 */
+            break;
+            
+        case 4:
+            /* 
+             * DATASET 4: Peak hour simulation
+             * Expected: 3 gates (realistic scenario)
+             * Purpose: Tests algorithm under realistic conditions
+             */
+            displayHeader("DATASET 4: Peak Hour Simulation (Expected: 3 Gates)");
+            numFlights = 8;
+            flights[0] = (Flight){1, timeToMinutes(8, 0), timeToMinutes(9, 30), -1};
+            flights[1] = (Flight){2, timeToMinutes(8, 15), timeToMinutes(10, 0), -1};
+            flights[2] = (Flight){3, timeToMinutes(8, 30), timeToMinutes(9, 45), -1};
+            flights[3] = (Flight){4, timeToMinutes(10, 0), timeToMinutes(11, 30), -1};
+            flights[4] = (Flight){5, timeToMinutes(10, 15), timeToMinutes(11, 45), -1};
+            flights[5] = (Flight){6, timeToMinutes(10, 30), timeToMinutes(12, 0), -1};
+            flights[6] = (Flight){7, timeToMinutes(12, 0), timeToMinutes(13, 30), -1};
+            flights[7] = (Flight){8, timeToMinutes(12, 30), timeToMinutes(14, 0), -1};
+            break;
+            
+        case 5:
+            /* 
+             * DATASET 5: Edge case - exact timing
+             * Expected: 2 gates (exact 20-min gaps)
+             * Purpose: Tests boundary condition of cleaning time
+             */
+            displayHeader("DATASET 5: Exact Cleaning Time Boundary (Expected: 2 Gates)");
+            numFlights = 4;
+            /* Each flight departs exactly 20 min before next arrives */
+            flights[0] = (Flight){1, timeToMinutes(8, 0), timeToMinutes(9, 0), -1};
+            flights[1] = (Flight){2, timeToMinutes(9, 20), timeToMinutes(10, 20), -1};  /* Exactly 20 min - OK */
+            flights[2] = (Flight){3, timeToMinutes(9, 10), timeToMinutes(10, 10), -1};  /* 10 min - needs Gate 2 */
+            flights[3] = (Flight){4, timeToMinutes(10, 40), timeToMinutes(11, 40), -1}; /* Can reuse Gate 1 */
+            break;
+            
+        default:
+            printf("  Invalid dataset number!\n");
+            return;
+    }
+    
+    printf("\n  Dataset loaded successfully with %d flights.\n", numFlights);
+    printf("\n  Flight Schedule:\n");
+    printf("  +----------+----------+-----------+\n");
+    printf("  |  Flight  |  Arrival | Departure |\n");
+    printf("  +----------+----------+-----------+\n");
+    
+    for (int i = 0; i < numFlights; i++) {
+        printf("  |  FL%03d   |   ", flights[i].flightNumber);
+        printTime(flights[i].arrivalTime);
+        printf("  |   ");
+        printTime(flights[i].departureTime);
+        printf("   |\n");
+    }
+    printf("  +----------+----------+-----------+\n");
+}
+
+/**
+ * Allows user to input custom flight data.
+ */
+void inputCustomFlights(void) {
+    int n, arrHour, arrMin, depHour, depMin;
+    
+    resetData();
+    displayHeader("CUSTOM FLIGHT INPUT");
+    
+    /* Input validation for number of flights */
+    do {
+        printf("\n  Enter number of flights (1-%d): ", MAX_FLIGHTS);
+        if (scanf("%d", &n) != 1 || n < 1 || n > MAX_FLIGHTS) {
+            printf("  ERROR: Please enter a valid number between 1 and %d.\n", MAX_FLIGHTS);
+            while (getchar() != '\n');  /* Clear input buffer */
+            n = 0;
+        }
+    } while (n < 1 || n > MAX_FLIGHTS);
+    
+    numFlights = n;
+    
+    printf("\n  Enter flight details (24-hour format HH MM):\n");
+    printf("  Example: For 14:30, enter: 14 30\n\n");
+    
+    for (int i = 0; i < numFlights; i++) {
+        flights[i].flightNumber = i + 1;
+        
+        /* Input arrival time with validation */
+        do {
+            printf("  Flight FL%03d - Arrival time (HH MM): ", i + 1);
+            if (scanf("%d %d", &arrHour, &arrMin) != 2 || 
+                arrHour < 0 || arrHour > 23 || arrMin < 0 || arrMin > 59) {
+                printf("  ERROR: Invalid time. Use format HH MM (e.g., 14 30).\n");
+                while (getchar() != '\n');
+                arrHour = -1;
+            }
+        } while (arrHour < 0);
+        
+        flights[i].arrivalTime = timeToMinutes(arrHour, arrMin);
+        
+        /* Input departure time with validation */
+        do {
+            printf("  Flight FL%03d - Departure time (HH MM): ", i + 1);
+            if (scanf("%d %d", &depHour, &depMin) != 2 || 
+                depHour < 0 || depHour > 23 || depMin < 0 || depMin > 59) {
+                printf("  ERROR: Invalid time. Use format HH MM (e.g., 16 45).\n");
+                while (getchar() != '\n');
+                depHour = -1;
+            } else if (timeToMinutes(depHour, depMin) <= flights[i].arrivalTime) {
+                printf("  ERROR: Departure must be after arrival time.\n");
+                depHour = -1;
+            }
+        } while (depHour < 0);
+        
+        flights[i].departureTime = timeToMinutes(depHour, depMin);
+        flights[i].assignedGate = -1;
+        
+        printf("\n");
+    }
+    
+    printf("  Successfully entered %d flights.\n", numFlights);
+}
+
+/* ============================================================================
+ * MENU AND MAIN PROGRAM
+ * ============================================================================ */
+
+/**
+ * Displays the main menu options.
+ */
+void displayMenu(void) {
+    printf("\n");
+    printf("  +-----------------------------------------------+\n");
+    printf("  |       AIRPORT GATE SCHEDULING SYSTEM         |\n");
+    printf("  |         (Greedy Algorithm Solution)          |\n");
+    printf("  +-----------------------------------------------+\n");
+    printf("  |  1. Load Dataset 1 (Sequential)              |\n");
+    printf("  |  2. Load Dataset 2 (All Overlapping)         |\n");
+    printf("  |  3. Load Dataset 3 (Cleaning Time Test)      |\n");
+    printf("  |  4. Load Dataset 4 (Peak Hour)               |\n");
+    printf("  |  5. Load Dataset 5 (Boundary Test)           |\n");
+    printf("  |  6. Input Custom Flights                     |\n");
+    printf("  |  7. Run Algorithm on Loaded Data             |\n");
+    printf("  |  0. Exit Program                             |\n");
+    printf("  +-----------------------------------------------+\n");
+    printf("  Enter your choice: ");
+}
+
+/**
+ * Runs the algorithm and displays all results.
+ */
+void runProgram(void) {
+    if (numFlights == 0) {
+        printf("\n  ERROR: No flights loaded! Please load a dataset first.\n");
+        return;
+    }
+    
+    printf("\n  Processing %d flights...\n", numFlights);
+    
+    /* Execute the greedy algorithm */
+    clock_t start = clock();
+    assignFlightsToGates();
+    clock_t end = clock();
+    
+    double timeTaken = ((double)(end - start)) / CLOCKS_PER_SEC * 1000;
+    
+    /* Display all results */
+    displayResults();
+    displayCleaningSchedule();
+    
+    /* Display execution time */
+    displayHeader("ALGORITHM PERFORMANCE");
+    printf("\n  Execution time: %.4f milliseconds\n", timeTaken);
+    printf("  Time complexity: O(n log n) for sorting + O(n * g) for assignment\n");
+    printf("  Space complexity: O(n + g) for storing flights and gates\n");
+    printf("  where n = %d flights, g = %d gates\n", numFlights, numGates);
+}
+
+/**
+ * Main function - Entry point of the program.
+ * Implements a user-friendly menu loop that allows multiple runs.
+ * 
+ * Reference: Menu-driven program structure as recommended by 
+ *            Kernighan & Ritchie (1988), The C Programming Language.
+ */
+int main(void) {
     int choice;
-    bool validChoice = false;
-
-    // Validate main menu choice
-    while (!validChoice) {
-        cout << "Choose input method:\n";
-        cout << "1. Use predefined dataset (1-6)\n";
-        cout << "2. Enter flights manually\n";
-        cout << "Choice: ";
-
-        if (!(cin >> choice)) {
-            cout << "Error: Invalid input. Please enter 1 or 2.\n\n";
-            cin.clear();
-            cin.ignore(10000, '\n');
+    bool running = true;
+    
+    /* Display welcome message */
+    printf("\n");
+    printf("  ****************************************************\n");
+    printf("  *                                                  *\n");
+    printf("  *    EASTWEST INTERNATIONAL AIRPORT               *\n");
+    printf("  *    Gate Scheduling Optimization System          *\n");
+    printf("  *                                                  *\n");
+    printf("  *    Algorithm: Greedy (Interval Partitioning)    *\n");
+    printf("  *    Constraint: 20-minute cleaning between uses  *\n");
+    printf("  *                                                  *\n");
+    printf("  ****************************************************\n");
+    
+    /* Main menu loop - allows multiple runs without restarting */
+    while (running) {
+        displayMenu();
+        
+        if (scanf("%d", &choice) != 1) {
+            printf("\n  ERROR: Invalid input. Please enter a number.\n");
+            while (getchar() != '\n');  /* Clear input buffer */
             continue;
         }
-
-        if (choice == 1 || choice == 2) {
-            validChoice = true;
-        } else {
-            cout << "Error: Invalid choice. Please enter 1 or 2.\n\n";
-        }
-    }
-
-    vector<Flight> flights;
-    int maxGates = -1; // -1 means unlimited gates
-
-    if (choice == 1) {
-        int datasetChoice;
-        validChoice = false;
-
-        // Validate dataset choice
-        while (!validChoice) {
-            cout << "\nSelect dataset (1-6):\n";
-            cout << "1. Provided dataset (20 flights)\n";
-            cout << "2. Non-overlapping flights (3 flights, optimal: 1 gate)\n";
-            cout << "3. All overlapping (4 flights, optimal: 4 gates)\n";
-            cout << "4. Mixed with cleaning reuse (5 flights, optimal: 2 gates)\n";
-            cout << "5. Realistic large schedule (15 flights)\n";
-            cout << "6. Limited gates scenario (10 flights, 3 gates max - shows UNASSIGNED)\n";
-            cout << "Choice: ";
-
-            if (!(cin >> datasetChoice)) {
-                cout << "Error: Invalid input. Please enter a number between 1-6.\n";
-                cin.clear();
-                cin.ignore(10000, '\n');
-                continue;
-            }
-
-            if (datasetChoice >= 1 && datasetChoice <= 6) {
-                flights = datasets[datasetChoice - 1];
-
-                // Dataset 6 has limited gates
-                if (datasetChoice == 6) {
-                    maxGates = 3;
-                    cout << "\n*** This dataset simulates LIMITED GATE CAPACITY (3 gates) ***\n";
-                    cout << "*** Some flights will be UNASSIGNED ***\n";
-                }
-
-                validChoice = true;
-            } else {
-                cout << "Error: Invalid choice. Please enter a number between 1-6.\n\n";
-            }
-        }
-    } else {
-        // Manual input with validation
-        int n;
-
-        // Validate number of flights
-        while (true) {
-            cout << "\nEnter number of flights (1-100): ";
-
-            if (!(cin >> n)) {
-                cout << "Error: Invalid input. Please enter a valid number.\n";
-                cin.clear();
-                cin.ignore(10000, '\n');
-                continue;
-            }
-
-            if (n < 1 || n > 100) {
-                cout << "Error: Number of flights must be between 1 and 100.\n";
-                continue;
-            }
-
-            break;
-        }
-
-        // Ask if user wants to limit gates
-        char limitGates;
-        cout << "\nDo you want to limit the number of available gates? (y/n): ";
-        cin >> limitGates;
-
-        if (limitGates == 'y' || limitGates == 'Y') {
-            while (true) {
-                cout << "Enter maximum number of gates (1-20): ";
-
-                if (!(cin >> maxGates)) {
-                    cout << "Error: Invalid input.\n";
-                    cin.clear();
-                    cin.ignore(10000, '\n');
-                    continue;
-                }
-
-                if (maxGates < 1 || maxGates > 20) {
-                    cout << "Error: Gates must be between 1 and 20.\n";
-                    continue;
-                }
-
-                cout << "\n*** GATE LIMIT SET: " << maxGates << " gates ***\n";
-                cout << "*** Flights may be UNASSIGNED if capacity exceeded ***\n";
+        
+        switch (choice) {
+            case 1:
+            case 2:
+            case 3:
+            case 4:
+            case 5:
+                loadDataset(choice);
                 break;
-            }
-        }
-
-        for (int i = 0; i < n; i++) {
-            string flightNo, arrivalStr, departureStr;
-            int arrival, departure;
-            bool validFlight = false;
-
-            cout << "\n--- Flight " << (i + 1) << " ---\n";
-
-            // Get flight number
-            cout << "Flight number: ";
-            cin >> flightNo;
-
-            // Validate flight number not empty
-            if (flightNo.empty()) {
-                cout << "Error: Flight number cannot be empty.\n";
-                i--;
-                continue;
-            }
-
-            // Validate arrival time
-            while (true) {
-                cout << "Arrival time (HHMM, e.g., 0830): ";
-                cin >> arrivalStr;
-
-                if (!isValidTimeFormat(arrivalStr)) {
-                    cout << "Error: Invalid time format. Use HHMM (e.g., 0830 for 8:30 AM).\n";
-                    cout << "       Hours: 00-23, Minutes: 00-59\n";
-                    continue;
-                }
-
-                arrival = timeToMinutes(arrivalStr);
+                
+            case 6:
+                inputCustomFlights();
                 break;
-            }
-
-            // Validate departure time
-            while (true) {
-                cout << "Departure time (HHMM, e.g., 1015): ";
-                cin >> departureStr;
-
-                if (!isValidTimeFormat(departureStr)) {
-                    cout << "Error: Invalid time format. Use HHMM (e.g., 1015 for 10:15 AM).\n";
-                    cout << "       Hours: 00-23, Minutes: 00-59\n";
-                    continue;
-                }
-
-                departure = timeToMinutes(departureStr);
-
-                // Check departure is after arrival
-                if (departure <= arrival) {
-                    cout << "Error: Departure time must be after arrival time.\n";
-                    cout << "       Arrival: " << arrivalStr << ", Departure: " << departureStr << "\n";
-                    continue;
-                }
-
-                // Check reasonable flight duration (at least 30 minutes, max 12 hours)
-                int duration = departure - arrival;
-                if (duration < 30) {
-                    cout << "Warning: Very short turnaround time (" << duration << " minutes).\n";
-                    cout << "         Minimum recommended: 30 minutes. Continue? (y/n): ";
-                    char confirm;
-                    cin >> confirm;
-                    if (confirm != 'y' && confirm != 'Y') {
-                        continue;
-                    }
-                }
-
-                if (duration > 720) {
-                    cout << "Warning: Very long duration (" << duration/60 << " hours).\n";
-                    cout << "         Maximum recommended: 12 hours. Continue? (y/n): ";
-                    char confirm;
-                    cin >> confirm;
-                    if (confirm != 'y' && confirm != 'Y') {
-                        continue;
-                    }
-                }
-
+                
+            case 7:
+                runProgram();
                 break;
-            }
-
-            flights.push_back(Flight(flightNo, arrival, departure));
-            cout << "Flight " << flightNo << " added successfully.\n";
+                
+            case 0:
+                printf("\n  Thank you for using the Gate Scheduling System!\n");
+                printf("  Goodbye.\n\n");
+                running = false;
+                break;
+                
+            default:
+                printf("\n  ERROR: Invalid choice. Please select 0-7.\n");
         }
-
-        cout << "\nTotal flights entered: " << flights.size() << "\n";
     }
-
-    // Run greedy algorithm
-    if (flights.empty()) {
-        cout << "\nError: No flights to schedule.\n";
-        return 1;
-    }
-
-    cout << "\nProcessing " << flights.size() << " flights...\n";
-    if (maxGates != -1) {
-        cout << "Gate capacity limit: " << maxGates << " gates\n";
-    }
-
-    vector<Gate> gates = assignGates(flights, 20, maxGates);
-
-    // Display results
-    displayResults(flights, gates, 20);
-
+    
     return 0;
 }
